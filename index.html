@@ -1,0 +1,380 @@
+import React, { useState, useEffect } from 'react';
+import { Bed, Users, User, CheckCircle, XCircle, LogOut, LogIn, Trash2, Home } from 'lucide-react';
+
+/**
+ * =========================================================================
+ * 用户配置区域 (在此处修改房型和房间号)
+ * =========================================================================
+ * * 格式说明：
+ * id: 唯一标识符，不要重复
+ * name: 显示在界面上的房型名称
+ * size: 描述 (仅用于辅助显示)
+ * rooms: 房间号列表，用逗号分隔的字符串或数组均可
+ */
+const INITIAL_CONFIG = [
+  {
+    id: 'small_single_1.2',
+    name: '小单间 1.2米',
+    desc: '经济实惠',
+    rooms: [510, 517, 519, 417, 419]
+  },
+  {
+    id: 'narrow_double_1.5',
+    name: '窄大床 1.5米',
+    desc: '适合一人住',
+    rooms: [503, 511, 518, 403, 411, 418]
+  },
+  {
+    id: 'std_double_1.5',
+    name: '标准大床 1.5米',
+    desc: '标准房型',
+    rooms: [502, 506, 509, 512, 520, 521, 522, 402, 409, 410, 412, 420, 421, 422]
+  },
+  {
+    id: 'large_double_1.8',
+    name: '豪华大床 1.8米',
+    desc: '宽敞舒适',
+    rooms: [505, 507, 508, 513, 405, 407, 408, 413, 423]
+  },
+  {
+    id: 'twin_1.2',
+    name: '双床房 1.2米',
+    desc: '双人出行',
+    rooms: [501, 515, 516, 401, 415, 416]
+  },
+  {
+    id: 'triple_1.0',
+    name: '三床房 1米',
+    desc: '家庭/多人',
+    rooms: [406]
+  }
+];
+
+// -------------------------------------------------------------------------
+//  以下是程序逻辑代码 (非专业人员无需修改)
+// -------------------------------------------------------------------------
+
+export default function HotelManager() {
+  // 状态管理
+  const [allRooms, setAllRooms] = useState([]);
+  const [bedType, setBedType] = useState('single'); // single, twin, triple
+  const [guestCount, setGuestCount] = useState('single'); // single, multi
+  const [preferLarge, setPreferLarge] = useState(false);
+  const [message, setMessage] = useState(null); // 提示信息
+
+  // 初始化：加载本地存储或使用默认配置
+  useEffect(() => {
+    const savedData = localStorage.getItem('hotel_rooms_data_v1');
+    if (savedData) {
+      setAllRooms(JSON.parse(savedData));
+    } else {
+      // 第一次运行，构建初始数据结构
+      const initialRooms = [];
+      INITIAL_CONFIG.forEach(type => {
+        type.rooms.forEach(roomNum => {
+          initialRooms.push({
+            roomNumber: roomNum.toString(),
+            typeId: type.id,
+            typeName: type.name,
+            isOccupied: false,
+            checkInTime: null
+          });
+        });
+      });
+      setAllRooms(initialRooms);
+    }
+  }, []);
+
+  // 数据变更时保存到本地
+  useEffect(() => {
+    if (allRooms.length > 0) {
+      localStorage.setItem('hotel_rooms_data_v1', JSON.stringify(allRooms));
+    }
+  }, [allRooms]);
+
+  // 显示临时提示消息
+  const showMessage = (text, type = 'success') => {
+    setMessage({ text, type });
+    setTimeout(() => setMessage(null), 3000);
+  };
+
+  // 核心逻辑：自动分配房间
+  const handleAutoAllocate = () => {
+    let targetTypeIds = [];
+
+    // --- 逻辑判断树 ---
+    if (bedType === 'twin') {
+      // 选择了双床 -> 在双床1.2米里分配
+      targetTypeIds = ['twin_1.2'];
+    } else if (bedType === 'triple') {
+      // 选择了三床 -> 在三床1米里分配
+      targetTypeIds = ['triple_1.0'];
+    } else if (bedType === 'single') {
+      // 选择了单床
+      if (guestCount === 'multi') {
+        // 单床 - 多人
+        // 优先 1.5米 -> 1.8米
+        targetTypeIds = ['std_double_1.5', 'large_double_1.8'];
+      } else {
+        // 单床 - 单人
+        if (preferLarge) {
+          // 勾选了大床 (优先窄大床 -> 标准大床 -> 豪华大床)
+          targetTypeIds = ['narrow_double_1.5', 'std_double_1.5', 'large_double_1.8'];
+        } else {
+          // 未勾选 (优先小单间 -> 窄大床 -> 标准大床 -> 豪华大床)
+          targetTypeIds = ['small_single_1.2', 'narrow_double_1.5', 'std_double_1.5', 'large_double_1.8'];
+        }
+      }
+    }
+
+    // --- 执行查找 ---
+    let foundRoom = null;
+    
+    // 按优先级顺序遍历房型
+    for (const typeId of targetTypeIds) {
+      // 找到该房型下所有空闲房间
+      const availableRooms = allRooms.filter(r => r.typeId === typeId && !r.isOccupied);
+      
+      if (availableRooms.length > 0) {
+        // 简单策略：取第一个找到的空房 (也可以改为随机)
+        foundRoom = availableRooms[0];
+        break; // 找到后立即停止
+      }
+    }
+
+    // --- 结果处理 ---
+    if (foundRoom) {
+      updateRoomStatus(foundRoom.roomNumber, true);
+      showMessage(`分配成功！房间号：${foundRoom.roomNumber} (${foundRoom.typeName})`);
+    } else {
+      showMessage('没有符合条件的空闲房间了！', 'error');
+    }
+  };
+
+  // 更新房间状态 (入住/退房)
+  const updateRoomStatus = (roomNumber, isOccupied) => {
+    const updatedRooms = allRooms.map(room => {
+      if (room.roomNumber === roomNumber) {
+        return {
+          ...room,
+          isOccupied: isOccupied,
+          checkInTime: isOccupied ? new Date().toLocaleString() : null
+        };
+      }
+      return room;
+    });
+    setAllRooms(updatedRooms);
+  };
+
+  // 重置所有数据 (用于调试或清空)
+  const handleResetAll = () => {
+    if (window.confirm('确定要清空所有入住状态吗？此操作不可恢复。')) {
+      const resetRooms = allRooms.map(r => ({ ...r, isOccupied: false, checkInTime: null }));
+      setAllRooms(resetRooms);
+      showMessage('系统已重置，所有房间为空闲状态。');
+    }
+  };
+
+  // 统计数据
+  const stats = {
+    total: allRooms.length,
+    occupied: allRooms.filter(r => r.isOccupied).length,
+    free: allRooms.filter(r => !r.isOccupied).length
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 text-slate-800 font-sans pb-10">
+      
+      {/* 顶部标题栏 */}
+      <div className="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto flex justify-between items-center">
+          <h1 className="text-xl font-bold flex items-center gap-2">
+            <Home size={24} /> 酒店前台房间分配系统
+          </h1>
+          <div className="text-sm bg-blue-700 px-3 py-1 rounded-full">
+            空闲: {stats.free} / 总房: {stats.total}
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-4xl mx-auto p-4 space-y-6">
+
+        {/* 提示消息浮窗 */}
+        {message && (
+          <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg text-white font-medium animate-bounce z-50 ${message.type === 'error' ? 'bg-red-500' : 'bg-green-600'}`}>
+            {message.text}
+          </div>
+        )}
+
+        {/* --- 第一部分：分配操作面板 --- */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <h2 className="text-lg font-semibold mb-4 border-b pb-2 text-gray-700 flex items-center gap-2">
+            <LogIn size={20} className="text-blue-500"/> 快速分配入住
+          </h2>
+          
+          <div className="space-y-6">
+            {/* 1. 床型选择 */}
+            <div>
+              <label className="block text-sm font-medium text-gray-500 mb-2">选择床型</label>
+              <div className="grid grid-cols-3 gap-3">
+                <button 
+                  onClick={() => { setBedType('single'); setGuestCount('single'); }}
+                  className={`py-3 px-4 rounded-lg border-2 flex items-center justify-center gap-2 transition-all
+                    ${bedType === 'single' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-600 hover:border-blue-200'}`}
+                >
+                  <Bed size={18} /> 单床
+                </button>
+                <button 
+                  onClick={() => setBedType('twin')}
+                  className={`py-3 px-4 rounded-lg border-2 flex items-center justify-center gap-2 transition-all
+                    ${bedType === 'twin' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-600 hover:border-blue-200'}`}
+                >
+                  <div className="flex"><Bed size={18} /><Bed size={18} /></div> 双床
+                </button>
+                <button 
+                  onClick={() => setBedType('triple')}
+                  className={`py-3 px-4 rounded-lg border-2 flex items-center justify-center gap-2 transition-all
+                    ${bedType === 'triple' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-200 text-gray-600 hover:border-blue-200'}`}
+                >
+                   <div className="flex -space-x-1"><Bed size={18} /><Bed size={18} /><Bed size={18} /></div> 三床
+                </button>
+              </div>
+            </div>
+
+            {/* 2. 条件分支 (仅当选择单床时出现) */}
+            {bedType === 'single' && (
+              <div className="animate-fade-in bg-gray-50 p-4 rounded-lg border border-gray-100">
+                <label className="block text-sm font-medium text-gray-500 mb-2">入住人数</label>
+                <div className="flex gap-4 mb-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="radio" 
+                      name="guestCount" 
+                      checked={guestCount === 'single'} 
+                      onChange={() => setGuestCount('single')}
+                      className="w-5 h-5 text-blue-600"
+                    />
+                    <span className="flex items-center gap-1"><User size={16}/> 单人入住</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="radio" 
+                      name="guestCount" 
+                      checked={guestCount === 'multi'} 
+                      onChange={() => setGuestCount('multi')}
+                      className="w-5 h-5 text-blue-600"
+                    />
+                    <span className="flex items-center gap-1"><Users size={16}/> 多人入住</span>
+                  </label>
+                </div>
+
+                {/* 3. 额外偏好 (仅当单床+单人时出现) */}
+                {guestCount === 'single' && (
+                  <div className="pt-2 border-t border-gray-200 mt-2">
+                     <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        checked={preferLarge}
+                        onChange={(e) => setPreferLarge(e.target.checked)}
+                        className="w-5 h-5 text-blue-600 rounded" 
+                      />
+                      <span className="text-gray-700">偏好大床 (如果不勾选，优先分配小单间)</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 4. 执行按钮 */}
+            <button 
+              onClick={handleAutoAllocate}
+              className="w-full py-4 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-lg font-bold rounded-xl shadow-lg transition-colors flex items-center justify-center gap-2"
+            >
+              <CheckCircle size={24} /> 自动分配房间
+            </button>
+          </div>
+        </div>
+
+        {/* --- 第二部分：房态看板 --- */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-lg font-semibold text-gray-700 flex items-center gap-2">
+              <Home size={20} className="text-orange-500"/> 房态总览
+            </h2>
+            <div className="flex gap-4 text-sm">
+              <div className="flex items-center gap-1"><div className="w-3 h-3 bg-green-100 border border-green-500 rounded"></div> 空闲</div>
+              <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-100 border border-red-500 rounded"></div> 已入住</div>
+            </div>
+          </div>
+
+          <div className="space-y-8">
+            {INITIAL_CONFIG.map(type => {
+              // 获取该房型下的所有房间数据
+              const roomsOfType = allRooms.filter(r => r.typeId === type.id);
+              if (roomsOfType.length === 0) return null;
+
+              return (
+                <div key={type.id}>
+                  <div className="flex items-baseline gap-2 mb-2 border-b border-gray-100 pb-1">
+                    <h3 className="font-bold text-gray-800">{type.name}</h3>
+                    <span className="text-xs text-gray-400">{type.desc}</span>
+                  </div>
+                  
+                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
+                    {roomsOfType.map(room => (
+                      <RoomCard 
+                        key={room.roomNumber} 
+                        room={room} 
+                        onToggle={() => updateRoomStatus(room.roomNumber, !room.isOccupied)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 底部功能区 */}
+        <div className="text-center pt-8 border-t border-gray-200">
+          <button 
+            onClick={handleResetAll}
+            className="text-gray-400 hover:text-red-500 text-sm flex items-center justify-center gap-1 mx-auto transition-colors"
+          >
+            <Trash2 size={14} /> 清空所有入住数据 (重置)
+          </button>
+          <p className="text-xs text-gray-300 mt-2">数据自动保存在本机浏览器中</p>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+// 子组件：单个房间卡片
+function RoomCard({ room, onToggle }) {
+  const isOccupied = room.isOccupied;
+
+  return (
+    <button
+      onClick={onToggle}
+      title={isOccupied ? `已入住: ${room.checkInTime} (点击退房)` : "点击办理入住"}
+      className={`
+        relative p-2 rounded-lg border-2 text-center transition-all duration-200 h-16 flex flex-col items-center justify-center
+        ${isOccupied 
+          ? 'bg-red-50 border-red-500 text-red-700 shadow-sm' 
+          : 'bg-green-50 border-green-500 text-green-700 hover:bg-green-100 hover:shadow-md'}
+      `}
+    >
+      <span className="font-bold text-lg leading-none">{room.roomNumber}</span>
+      <span className="text-[10px] mt-1 opacity-80 font-medium">
+        {isOccupied ? '已住' : '空闲'}
+      </span>
+      {isOccupied && (
+        <div className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5">
+          <User size={10} />
+        </div>
+      )}
+    </button>
+  );
+}
