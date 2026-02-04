@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>房间分配系统 (自适应分栏版)</title>
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 React 和 Babel -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        /* 简单的动画效果 */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+        body { font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif; }
+        
+        /* 自定义滚动条样式，让电脑端列表看起来更精致 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- 1. 图标组件 (SVG) ---
+        const IconBed = ({ size = 18, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M2 4v16"/><path d="M2 8h18a2 2 0 0 1 2 2v10"/><path d="M2 17h20"/><path d="M6 8v9"/></svg>
+        );
+        const IconUser = ({ size = 18, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        );
+        const IconUsers = ({ size = 18, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        );
+        const IconCheck = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        );
+        const IconHome = ({ size = 24, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        );
+        const IconTrash = ({ size = 14, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+        );
+        const IconLogin = ({ size = 20, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        );
+        const IconSearch = ({ size = 18, className = "" }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        );
+
+        // --- 2. 配置区域 (保持最新数据) ---
+        const INITIAL_CONFIG = [
+            {
+                id: 'small_single_1.2',
+                name: '小单间 1.2米',
+                desc: '经济实惠',
+                rooms: [510, 517, 519, 417, 419, 303, 310]
+            },
+            {
+                id: 'narrow_double_1.5',
+                name: '窄大床 1.5米',
+                desc: '适合一人住',
+                rooms: [503, 511, 518, 403, 411, 418, 309, 311, 317, 318]
+            },
+            {
+                id: 'std_double_1.5',
+                name: '标准大床 1.5米',
+                desc: '标准房型',
+                rooms: [502, 506, 509, 512, 520, 521, 522, 402, 409, 410, 412, 420, 421, 422, 302, 308, 319, 320, 321, 322]
+            },
+            {
+                id: 'large_double_1.8',
+                name: '豪华大床 1.8米',
+                desc: '宽敞舒适',
+                rooms: [505, 507, 508, 513, 405, 407, 408, 413, 423, 305, 307, 313, 323]
+            },
+            {
+                id: 'twin_1.2',
+                name: '双床房 1.2米',
+                desc: '双人出行',
+                rooms: [501, 515, 516, 401, 415, 416, 301, 316]
+            },
+            {
+                id: 'triple_1.0',
+                name: '三床房 1米',
+                desc: '家庭/多人',
+                rooms: [406, 306, 315]
+            }
+        ];
+
+        // --- 3. 应用程序逻辑 ---
+        function HotelManager() {
+            const [allRooms, setAllRooms] = useState([]);
+            const [bedType, setBedType] = useState('single'); 
+            const [guestCount, setGuestCount] = useState('single');
+            const [preferLarge, setPreferLarge] = useState(false);
+            const [message, setMessage] = useState(null); 
+            const [searchTerm, setSearchTerm] = useState('');
+
+            // 初始化
+            useEffect(() => {
+                const savedData = localStorage.getItem('hotel_rooms_data_v1');
+                if (savedData) {
+                    setAllRooms(JSON.parse(savedData));
+                } else {
+                    const initialRooms = [];
+                    INITIAL_CONFIG.forEach(type => {
+                        type.rooms.forEach(roomNum => {
+                            initialRooms.push({
+                                roomNumber: roomNum.toString(),
+                                typeId: type.id,
+                                typeName: type.name,
+                                isOccupied: false,
+                                checkInTime: null
+                            });
+                        });
+                    });
+                    setAllRooms(initialRooms);
+                }
+            }, []);
+
+            // 保存
+            useEffect(() => {
+                if (allRooms.length > 0) {
+                    localStorage.setItem('hotel_rooms_data_v1', JSON.stringify(allRooms));
+                }
+            }, [allRooms]);
+
+            const showMessage = (text, type = 'success') => {
+                setMessage({ text, type });
+                setTimeout(() => setMessage(null), 3000);
+            };
+
+            const handleAutoAllocate = () => {
+                let targetTypeIds = [];
+                if (bedType === 'twin') targetTypeIds = ['twin_1.2'];
+                else if (bedType === 'triple') targetTypeIds = ['triple_1.0'];
+                else if (bedType === 'single') {
+                    if (guestCount === 'multi') targetTypeIds = ['std_double_1.5', 'large_double_1.8'];
+                    else {
+                        if (preferLarge) targetTypeIds = ['narrow_double_1.5', 'std_double_1.5', 'large_double_1.8'];
+                        else targetTypeIds = ['small_single_1.2', 'narrow_double_1.5', 'std_double_1.5', 'large_double_1.8'];
+                    }
+                }
+
+                let foundRoom = null;
+                for (const typeId of targetTypeIds) {
+                    const availableRooms = allRooms.filter(r => r.typeId === typeId && !r.isOccupied);
+                    if (availableRooms.length > 0) {
+                        foundRoom = availableRooms[0];
+                        break;
+                    }
+                }
+
+                if (foundRoom) {
+                    updateRoomStatus(foundRoom.roomNumber, true);
+                    showMessage(`分配成功！房间号：${foundRoom.roomNumber} (${foundRoom.typeName})`);
+                } else {
+                    showMessage('没有符合条件的空闲房间了！', 'error');
+                }
+            };
+
+            const updateRoomStatus = (roomNumber, isOccupied) => {
+                const updatedRooms = allRooms.map(room => {
+                    if (room.roomNumber === roomNumber) {
+                        return {
+                            ...room,
+                            isOccupied: isOccupied,
+                            checkInTime: isOccupied ? new Date().toLocaleString() : null
+                        };
+                    }
+                    return room;
+                });
+                setAllRooms(updatedRooms);
+            };
+
+            const handleResetAll = () => {
+                if (window.confirm('确定要清空所有入住状态吗？此操作不可恢复。')) {
+                    const resetRooms = allRooms.map(r => ({ ...r, isOccupied: false, checkInTime: null }));
+                    setAllRooms(resetRooms);
+                    showMessage('系统已重置，所有房间为空闲状态。');
+                }
+            };
+
+            // 分组与排序逻辑
+            const groupedRooms = useMemo(() => {
+                let availableRooms = allRooms;
+                if (searchTerm.trim()) {
+                    availableRooms = allRooms.filter(r => r.roomNumber.includes(searchTerm.trim()));
+                }
+
+                return INITIAL_CONFIG.map(type => {
+                    const roomsOfType = availableRooms.filter(r => r.typeId === type.id);
+                    if (roomsOfType.length === 0) return null;
+
+                    const floorsData = {};
+                    roomsOfType.forEach(room => {
+                        const floorKey = room.roomNumber.charAt(0);
+                        if (!floorsData[floorKey]) floorsData[floorKey] = [];
+                        floorsData[floorKey].push(room);
+                    });
+
+                    const sortedFloorKeys = Object.keys(floorsData).sort((a, b) => b - a);
+
+                    return { ...type, floorsData, sortedFloorKeys };
+                }).filter(Boolean);
+            }, [allRooms, searchTerm]);
+
+
+            const stats = {
+                total: allRooms.length,
+                occupied: allRooms.filter(r => r.isOccupied).length,
+                free: allRooms.filter(r => !r.isOccupied).length
+            };
+
+            return (
+                <div className="min-h-screen pb-10">
+                    {/* 顶部导航栏 (宽度自适应) */}
+                    <div className="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-50">
+                        <div className="max-w-7xl mx-auto flex justify-between items-center">
+                            <h1 className="text-xl font-bold flex items-center gap-2">
+                                <IconHome /> 房间分配系统
+                            </h1>
+                            <div className="text-sm bg-blue-700 px-4 py-1.5 rounded-full font-mono font-medium shadow-inner">
+                                空闲: {stats.free} / 总房: {stats.total}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="max-w-7xl mx-auto p-4">
+                        {/* 全局消息提示 */}
+                        {message && (
+                            <div className={`fixed top-20 left-1/2 transform -translate-x-1/2 px-6 py-3 rounded-lg shadow-lg text-white font-medium animate-bounce z-[60] ${message.type === 'error' ? 'bg-red-500' : 'bg-green-600'}`}>
+                                {message.text}
+                            </div>
+                        )}
+
+                        {/* --- 核心布局改变：在 lg (大屏幕) 下变为 Flex Row 布局 --- */}
+                        <div className="flex flex-col lg:flex-row gap-6 items-start">
+                            
+                            {/* === 左侧栏：控制面板 (在电脑端固定宽度且粘性定位) === */}
+                            <div className="w-full lg:w-[350px] lg:shrink-0 lg:sticky lg:top-24 transition-all duration-300">
+                                <div className="bg-white rounded-xl shadow-md border border-gray-200 p-5">
+                                    <h2 className="text-lg font-bold mb-5 border-b pb-3 text-gray-800 flex items-center gap-2">
+                                        <IconLogin className="text-blue-600"/> 
+                                        快速分配
+                                    </h2>
+                                    
+                                    <div className="space-y-6">
+                                        {/* 床型选择 */}
+                                        <div>
+                                            <label className="block text-sm font-semibold text-gray-600 mb-2">选择床型</label>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                <button 
+                                                    onClick={() => { setBedType('single'); setGuestCount('single'); }}
+                                                    className={`py-3 px-2 rounded-lg border-2 flex flex-col items-center justify-center gap-1 transition-all text-sm ${bedType === 'single' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-100 text-gray-600 hover:border-blue-200'}`}
+                                                >
+                                                    <IconBed size={20}/> 单床
+                                                </button>
+                                                <button 
+                                                    onClick={() => setBedType('twin')}
+                                                    className={`py-3 px-2 rounded-lg border-2 flex flex-col items-center justify-center gap-1 transition-all text-sm ${bedType === 'twin' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-100 text-gray-600 hover:border-blue-200'}`}
+                                                >
+                                                    <div className="flex"><IconBed size={16}/><IconBed size={16}/></div> 双床
+                                                </button>
+                                                <button 
+                                                    onClick={() => setBedType('triple')}
+                                                    className={`py-3 px-2 rounded-lg border-2 flex flex-col items-center justify-center gap-1 transition-all text-sm ${bedType === 'triple' ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' : 'border-gray-100 text-gray-600 hover:border-blue-200'}`}
+                                                >
+                                                    <div className="flex -space-x-1"><IconBed size={14}/><IconBed size={14}/><IconBed size={14}/></div> 三床
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* 详细选项 */}
+                                        {bedType === 'single' && (
+                                            <div className="animate-fade-in bg-slate-50 p-4 rounded-lg border border-slate-100">
+                                                <label className="block text-sm font-semibold text-gray-600 mb-3">入住详情</label>
+                                                <div className="flex gap-4 mb-4">
+                                                    <label className="flex items-center gap-2 cursor-pointer hover:bg-white p-1 rounded transition">
+                                                        <input type="radio" name="guestCount" checked={guestCount === 'single'} onChange={() => setGuestCount('single')} className="w-4 h-4 text-blue-600 focus:ring-blue-500"/>
+                                                        <span className="flex items-center gap-1 text-sm text-gray-700"><IconUser size={14}/> 单人</span>
+                                                    </label>
+                                                    <label className="flex items-center gap-2 cursor-pointer hover:bg-white p-1 rounded transition">
+                                                        <input type="radio" name="guestCount" checked={guestCount === 'multi'} onChange={() => setGuestCount('multi')} className="w-4 h-4 text-blue-600 focus:ring-blue-500"/>
+                                                        <span className="flex items-center gap-1 text-sm text-gray-700"><IconUsers size={14}/> 多人</span>
+                                                    </label>
+                                                </div>
+
+                                                {guestCount === 'single' && (
+                                                    <div className="pt-3 border-t border-gray-200">
+                                                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                                                            <input type="checkbox" checked={preferLarge} onChange={(e) => setPreferLarge(e.target.checked)} className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
+                                                            <span className="text-sm text-gray-600">偏好大床</span>
+                                                        </label>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        <button 
+                                            onClick={handleAutoAllocate}
+                                            className="w-full py-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white text-lg font-bold rounded-xl shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 transform active:scale-95"
+                                        >
+                                            <IconCheck /> 自动分配
+                                        </button>
+
+                                        {/* 底部重置 (仅在宽屏下显示在这里) */}
+                                        <div className="pt-4 border-t border-gray-100 text-center">
+                                            <button 
+                                                onClick={handleResetAll}
+                                                className="text-gray-400 hover:text-red-500 text-xs flex items-center justify-center gap-1 mx-auto transition-colors"
+                                            >
+                                                <IconTrash size={12}/> 重置所有数据
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* === 右侧栏：房态列表 (占据剩余空间) === */}
+                            <div className="w-full flex-grow">
+                                <div className="bg-white rounded-xl shadow-md border border-gray-200 p-5 min-h-[500px]">
+                                    
+                                    {/* 顶部工具栏 */}
+                                    <div className="flex flex-col sm:flex-row justify-between items-center mb-6 gap-4 border-b border-gray-100 pb-4 sticky top-0 bg-white z-10 pt-1">
+                                        <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                                            <IconHome size={22} className="text-orange-500"/> 房态总览
+                                        </h2>
+                                        
+                                        <div className="flex items-center gap-4 w-full sm:w-auto">
+                                            {/* 搜索框 */}
+                                            <div className="relative w-full sm:w-64 group">
+                                                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                                    <IconSearch className="text-gray-400 group-focus-within:text-blue-500 transition-colors" />
+                                                </div>
+                                                <input 
+                                                    type="text" 
+                                                    placeholder="搜索房间号 (如 501)" 
+                                                    value={searchTerm}
+                                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                                    className="w-full pl-10 pr-8 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm transition-all"
+                                                />
+                                                {searchTerm && (
+                                                    <button 
+                                                        onClick={() => setSearchTerm('')}
+                                                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
+                                                    >
+                                                        ×
+                                                    </button>
+                                                )}
+                                            </div>
+                                            
+                                            {/* 图例 */}
+                                            <div className="hidden md:flex gap-4 text-xs font-medium whitespace-nowrap">
+                                                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-white border-2 border-green-500 rounded-sm"></div>空闲</div>
+                                                <div className="flex items-center gap-1.5"><div className="w-3 h-3 bg-red-50 border-2 border-red-500 rounded-sm"></div>入住</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 房间列表内容 */}
+                                    <div className="space-y-6">
+                                        {groupedRooms.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center py-20 text-gray-300">
+                                                <IconHome size={48} className="mb-4 opacity-20"/>
+                                                <p>未找到匹配的房间</p>
+                                            </div>
+                                        ) : (
+                                            groupedRooms.map(group => (
+                                                <div key={group.id} className="animate-fade-in">
+                                                    {/* 房型标题 */}
+                                                    <div className="flex items-baseline gap-3 mb-3 pl-1">
+                                                        <h3 className="font-bold text-slate-700 text-lg leading-none">{group.name}</h3>
+                                                        <span className="text-xs text-slate-400 font-light px-2 py-0.5 bg-slate-100 rounded-full">{group.desc}</span>
+                                                    </div>
+                                                    
+                                                    {/* 楼层容器 */}
+                                                    <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-100">
+                                                        {group.sortedFloorKeys.map(floor => (
+                                                            <div key={floor} className="flex flex-col sm:flex-row gap-2 sm:gap-4 mb-3 last:mb-0 border-b border-slate-100 last:border-0 pb-3 last:pb-0">
+                                                                
+                                                                {/* 楼层标识 (左侧) */}
+                                                                <div className="flex items-center sm:w-16 sm:shrink-0">
+                                                                    <span className="text-xs font-bold text-slate-500 bg-slate-200 px-2 py-1 rounded shadow-sm">{floor}层</span>
+                                                                    <div className="h-px bg-slate-200 flex-grow sm:hidden ml-2"></div>
+                                                                </div>
+
+                                                                {/* 房间网格 (右侧) - 增加 xl 断点以适应大屏 */}
+                                                                <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-5 xl:grid-cols-8 2xl:grid-cols-10 gap-2 flex-grow">
+                                                                    {group.floorsData[floor].map(room => (
+                                                                        <RoomCard 
+                                                                            key={room.roomNumber} 
+                                                                            room={room} 
+                                                                            onToggle={() => updateRoomStatus(room.roomNumber, !room.isOccupied)}
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 手机端底部显示重置按钮 (电脑端在左侧栏显示) */}
+                        <div className="lg:hidden text-center pt-8 border-t border-gray-200 mt-6">
+                            <button 
+                                onClick={handleResetAll}
+                                className="text-gray-400 hover:text-red-500 text-sm flex items-center justify-center gap-1 mx-auto transition-colors"
+                            >
+                                <IconTrash /> 清空所有入住数据 (重置)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // 房间卡片组件
+        function RoomCard({ room, onToggle }) {
+            const isOccupied = room.isOccupied;
+            return (
+                <button
+                    onClick={onToggle}
+                    title={isOccupied ? `已入住: ${room.checkInTime} (点击退房)` : "点击办理入住"}
+                    className={`
+                        relative group rounded-md border text-center transition-all duration-200 h-12 flex flex-col items-center justify-center w-full overflow-hidden
+                        ${isOccupied 
+                        ? 'bg-red-50 border-red-500 text-red-700 shadow-sm' 
+                        : 'bg-white border-green-500 text-green-700 hover:bg-green-50 hover:border-green-600 hover:shadow-md'}
+                    `}
+                >
+                    <span className="font-bold text-base leading-none tracking-tight">{room.roomNumber}</span>
+                    <span className="text-[9px] mt-0.5 opacity-60 font-medium scale-90 group-hover:scale-100 transition-transform">
+                        {isOccupied ? '入住' : '空闲'}
+                    </span>
+                    
+                    {/* 选中状态角标 */}
+                    {isOccupied && (
+                        <div className="absolute top-0 right-0 w-3 h-3">
+                            <div className="absolute top-0 right-0 w-0 h-0 border-t-[12px] border-r-[12px] border-t-transparent border-r-red-500"></div>
+                        </div>
+                    )}
+                </button>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<HotelManager />);
+    </script>
+</body>
+</html>
+
