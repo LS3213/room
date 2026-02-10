@@ -186,11 +186,11 @@
 
                 const dateStr = new Date().toLocaleString('zh-CN', { hour12: false });
                 let text = `【酒店房态报表】\n生成时间: ${dateStr}\n`;
-                text += `空闲: ${freeCount}间 | 维修: ${maintCount}间\n----------------`;
+                text += `空闲: ${freeCount}间 | 维修/打扫: ${maintCount}间\n----------------`;
 
-                // 辅助：格式化房间号，维修房加(修)
+                // 辅助：格式化房间号，维修房加(修/扫)
                 const formatRoom = (r) => {
-                    return r.status === STATUS.MAINTENANCE ? `${r.roomNumber}(修)` : r.roomNumber;
+                    return r.status === STATUS.MAINTENANCE ? `${r.roomNumber}(修/扫)` : r.roomNumber;
                 };
 
                 if (mode === 'byType') {
@@ -205,7 +205,7 @@
                         const typeFree = typeRooms.filter(r => r.status === STATUS.FREE).length;
                         const typeMaint = typeRooms.filter(r => r.status === STATUS.MAINTENANCE).length;
                         
-                        text += `\n\n【${type.name}】(空${typeFree}${typeMaint > 0 ? `, 修${typeMaint}`:''})`;
+                        text += `\n\n【${type.name}】(空${typeFree}${typeMaint > 0 ? `, 修/扫${typeMaint}`:''})`;
                         
                         // 按楼层分组
                         const floors = {};
@@ -244,7 +244,7 @@
                             const fFree = floorRooms.filter(r => r.status === STATUS.FREE).length;
                             const fMaint = floorRooms.filter(r => r.status === STATUS.MAINTENANCE).length;
 
-                            text += `\n\n== ${f}层 (空${fFree}${fMaint > 0 ? `, 修${fMaint}`:''}) ==\n`;
+                            text += `\n\n== ${f}层 (空${fFree}${fMaint > 0 ? `, 修/扫${fMaint}`:''}) ==\n`;
                             
                             // 房间号排序并格式化
                             const roomStrs = floorRooms
@@ -256,7 +256,7 @@
                     }
                 }
                 
-                text += `\n\n----------------\n共计: ${targetRooms.length}间 (含维修)`;
+                text += `\n\n----------------\n共计: ${targetRooms.length}间 (含维修/打扫)`;
                 setReportText(text);
                 setCopySuccess(false);
             }, [isOpen, mode, allRooms]);
@@ -651,7 +651,7 @@
                             <div className="text-sm bg-blue-700 px-3 py-1 rounded-full whitespace-nowrap flex gap-3">
                                 <span>空闲: {stats.free}</span>
                                 <span className="opacity-70">|</span>
-                                <span>维修: {stats.maintenance}</span>
+                                <span>维修/打扫: {stats.maintenance}</span>
                                 <span className="opacity-70">|</span>
                                 <span>总: {stats.total}</span>
                             </div>
@@ -806,4 +806,5 @@
     </script>
 </body>
 </html>
+
 
